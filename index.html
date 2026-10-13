@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>What's your weather today? 90 seconds to clear it</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #F3F5EF; --ink-dim: #B7BCB2; --green: #86BC25; --neon: #86EB22; --blue: #00A3E0;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  html { height: 100%; scroll-padding-top: env(safe-area-inset-top, 0px); }
+  body {
+    margin: 0; height: 100%; background: #1b1a1d; color: var(--ink); overflow: hidden;
+    font-family: 'Open Sans', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  #sky { position: fixed; inset: 0; display: block; z-index: 0; touch-action: none; }
+  .ui {
+    position: fixed; inset: 0; z-index: 1; pointer-events: none;
+    padding: calc(env(safe-area-inset-top, 0px) + 18px) 20px calc(env(safe-area-inset-bottom, 0px) + 14px);
+  }
+  button { font: inherit; pointer-events: auto; cursor: pointer; }
+  button:focus-visible { outline: 3px solid var(--neon); outline-offset: 3px; }
+
+  .mark {
+    position: absolute; top: calc(env(safe-area-inset-top, 0px) + 18px); left: 20px; z-index: 2;
+    display: flex; align-items: center; gap: 10px; font-size: .86rem; color: var(--ink-dim);
+  }
+  .mark i { width: 10px; height: 10px; border-radius: 50%; background: var(--green); box-shadow: 0 0 14px var(--green); }
+  #left {
+    position: absolute; top: calc(env(safe-area-inset-top, 0px) + 18px); right: 20px; z-index: 2;
+    font-size: .95rem; color: var(--ink-dim); font-variant-numeric: tabular-nums; opacity: 0; transition: opacity .4s;
+  }
+  #left.on { opacity: 1; }
+
+  .screen {
+    position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
+    padding: 56px 20px calc(env(safe-area-inset-bottom, 0px) + 44px); text-align: center;
+    opacity: 0; visibility: hidden; transition: opacity .7s ease, visibility 0s linear .7s;
+  }
+  .screen.on { opacity: 1; visibility: visible; transition: opacity .7s ease .25s, visibility 0s; }
+  .ringSpace { flex: 1 1 0; min-height: 110px; width: 100%; }
+  .homeText { display: flex; flex-direction: column; align-items: center; }
+
+  h1, h2 {
+    margin: 0; font-weight: 300; line-height: 1.1; letter-spacing: -.015em;
+    font-size: clamp(2.2rem, 6.4vw, 4rem); text-shadow: 0 2px 30px rgba(0,0,0,.6);
+  }
+  .meta { margin: 0 0 10px; font-size: .92rem; color: var(--ink-dim); text-shadow: 0 1px 14px rgba(0,0,0,.7); }
+  .sub { margin: 14px 0 0; max-width: 44ch; color: var(--ink-dim); font-size: 1.04rem; line-height: 1.55; text-shadow: 0 1px 16px rgba(0,0,0,.8); }
+  .fine { margin: 14px 0 0; font-size: .84rem; color: var(--ink-dim); }
+
+  .btn {
+    color: #11150a; background: var(--green); border: 1px solid var(--green); border-radius: 999px;
+    padding: 14px 30px; min-height: 52px; font-size: 1.05rem; font-weight: 600; margin-top: 24px;
+    transition: background .2s, transform .2s;
+  }
+  .btn:hover { background: var(--neon); border-color: var(--neon); }
+  .btn.ghost { background: rgba(255,255,255,.05); color: var(--ink); border-color: rgba(255,255,255,.3); font-weight: 400; }
+  .btn.ghost:hover { background: rgba(255,255,255,.14); border-color: rgba(255,255,255,.55); }
+  .link {
+    background: none; border: 0; color: var(--ink-dim); text-decoration: underline;
+    text-underline-offset: 4px; min-height: 44px; padding: 10px 14px; font-size: .95rem;
+  }
+  .link:hover { color: var(--ink); }
+
+  #run { padding: 0; }
+  .cueWrap {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: min(420px, 88vw); display: flex; flex-direction: column; align-items: center;
+  }
+  .cueWrap p { margin: 0; text-shadow: 0 2px 22px rgba(0,0,0,.75); }
+  #cue { font-weight: 300; font-size: clamp(1.45rem, 4.6vw, 2.2rem); line-height: 1.2; }
+  #count { margin-top: 10px !important; color: var(--ink-dim); font-size: 1.05rem; font-variant-numeric: tabular-nums; min-height: 1.4em; }
+  #sub2 { margin-top: 8px !important; color: var(--ink-dim); font-size: .95rem; }
+  .bottom { position: absolute; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom, 0px) + 14px); display: flex; justify-content: center; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+  .row .btn { margin-top: 24px; }
+
+  .weathers { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: min(460px, 100%); margin-top: 22px; }
+  .weather {
+    color: var(--ink); background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.3); border-radius: 18px;
+    padding: 12px 12px 11px; min-height: 64px; display: flex; flex-direction: column; gap: 2px; align-items: center; justify-content: center;
+    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); transition: background .2s, border-color .2s, color .2s;
+  }
+  .weather b { font-size: 1.05rem; font-weight: 600; }
+  .weather span { font-size: .82rem; color: var(--ink-dim); transition: color .2s; }
+  .weather:hover { background: var(--green); border-color: var(--green); color: #11150a; }
+  .weather:hover span { color: #2c3d12; }
+  #justgo { margin-top: 6px; }
+  @media (max-height: 700px) { .hsub { display: none; } }
+  @media (max-height: 640px) { .fine { display: none; } }
+  @media (prefers-reduced-motion: reduce) { .screen, .screen.on { transition-duration: .01s; transition-delay: 0s; } }
+</style>
+</head>
+<body>
+<canvas id="sky" aria-hidden="true"></canvas>
+
+<main class="ui">
+  <div class="mark"><i></i><span>Day 1</span></div>
+  <div id="left" aria-hidden="true"></div>
+
+  <section id="home" class="screen on" aria-label="Pick your weather">
+    <div class="ringSpace"></div>
+    <div class="homeText">
+      <p class="meta">Something kind to your mind</p>
+      <h1>What's your weather today?</h1>
+      <p class="sub hsub">Pick the one that fits. Then it's 90 seconds and nine slow breaths, and the weather clears as you go.</p>
+      <div class="weathers" role="group" aria-label="Pick your weather">
+        <button class="weather" data-w="stormy"><b>Stormy</b><span>On edge, wound up</span></button>
+        <button class="weather" data-w="foggy"><b>Foggy</b><span>Can't think straight</span></button>
+        <button class="weather" data-w="buzzing"><b>Buzzing</b><span>Too many things at once</span></button>
+        <button class="weather" data-w="heavy"><b>Heavy</b><span>Low and tired</span></button>
+      </div>
+      <button class="link" id="justgo">Not sure? Just start</button>
+      <p class="fine">No sign-in. Nothing saved.</p>
+    </div>
+  </section>
+
+  <section id="run" class="screen" aria-label="Breathing">
+    <div class="cueWrap" aria-live="polite">
+      <p id="cue"></p>
+      <p id="count" aria-hidden="true"></p>
+      <p id="sub2">In for 4, out for 6</p>
+    </div>
+    <div class="bottom"><button class="link" id="stop">Stop</button></div>
+  </section>
+
+  <section id="done" class="screen" aria-labelledby="doneTitle">
+    <div class="ringSpace"></div>
+    <div class="homeText">
+      <h2 id="doneTitle">The sky is clear.</h2>
+      <p class="sub">Next time your chest tightens in a meeting, take three of these: in for 4, out for 6. Nobody has to know.</p>
+      <p class="sub" style="margin-top:10px">More is on the way.</p>
+      <div class="row"><button class="btn ghost" id="again">Go again</button><button class="btn ghost" id="other">Pick another weather</button></div>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+  const PHASES = [['Breathe in', 4, 0, 1], ['Breathe out', 6, 1, 0]];
+  const CYCLE = 10, CYCLES = 9, TOTAL = CYCLE * CYCLES;   // 9 breaths x 10 seconds = 90 seconds
+  // Each weather moves and looks different, but all of them clear the same way.
+  const WEATHER = {
+    stormy:  { storm: ['#7d8793', '#00A3E0', '#aab2bb'], amp: .08, wx: .04, wy: .03, jit: 0,   sx: 1,   sy: 1,   a0: .45, damp: .92, round: false },
+    foggy:   { storm: ['#a3abb4', '#c4cad0', '#8a949e'], amp: .035, wx: .05, wy: 0,   jit: 0,   sx: 3.4, sy: 3.4, a0: .16, damp: .95, round: true },
+    buzzing: { storm: ['#e88c30', '#f2c14e', '#ffffff'], amp: .10, wx: 0,   wy: 0,   jit: .55, sx: 1,   sy: 1,   a0: .62, damp: .92, round: false },
+    heavy:   { storm: ['#5a6a80', '#3f4d63', '#7f8c9e'], amp: .02, wx: 0,   wy: .09, jit: 0,   sx: .8,  sy: 3.4, a0: .5,  damp: .92, round: false }
+  };
+  let weather = 'stormy';
+
+  const TAU = Math.PI * 2;
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+  const smooth = x => x * x * (3 - 2 * x);
+  const hex = c => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)];
+  const mix = (c1, c2, t) => { const a = hex(c1), b = hex(c2); return [lerp(a[0], b[0], t) | 0, lerp(a[1], b[1], t) | 0, lerp(a[2], b[2], t) | 0]; };
+  const el = id => document.getElementById(id);
+  const mmss = s => { s = Math.max(0, Math.ceil(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const cv = el('sky'), ctx = cv.getContext('2d');
+  let w = 0, h = 0, dpr = 1, baseR = 200, P = [], groups = [[], [], []], lastW = 0, rt;
+
+  function setup() {
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    w = window.innerWidth; h = window.innerHeight; lastW = w;
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+    cv.style.width = w + 'px'; cv.style.height = h + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    baseR = Math.min(270, Math.min(w, h) * 0.37);
+    const small = Math.min(w, h) < 600;
+    const n = Math.floor(clamp(w * h / 1500, 350, small ? 650 : 1100) * (reduce ? 0.55 : 1));
+    P = []; groups = [[], [], []];
+    for (let i = 0; i < n; i++) {
+      const r = Math.random(), g = r < 0.55 ? 0 : r < 0.7 ? 1 : 2;
+      const p = { x: Math.random() * w, y: Math.random() * h, vx: 0, vy: 0, a: Math.random() * TAU,
+        rf: 0.82 + Math.random() * 0.42, sp: (Math.random() < 0.5 ? -1 : 1) * (0.05 + Math.random() * 0.14),
+        s: Math.random() * 100, z: 1.2 + Math.random() * 1.5 };
+      P.push(p); groups[g].push(p);
+    }
+    ctx.fillStyle = '#1b1a1d'; ctx.fillRect(0, 0, w, h);
+  }
+  window.addEventListener('resize', () => {
+    clearTimeout(rt);
+    rt = setTimeout(() => { if (Math.abs(window.innerWidth - lastW) < 2 && P.length) { measure(); return; } setup(); measure(); }, 150);
+  });
+
+  const ptr = { x: -999, y: -999, on: false };
+  window.addEventListener('pointermove', e => { ptr.x = e.clientX; ptr.y = e.clientY; ptr.on = true; });
+  window.addEventListener('pointerdown', e => { ptr.x = e.clientX; ptr.y = e.clientY; ptr.on = true; });
+  window.addEventListener('pointerup', e => { if (e.pointerType !== 'mouse') ptr.on = false; });
+  document.addEventListener('pointerleave', () => { ptr.on = false; });
+
+  const scr = { home: el('home'), run: el('run'), done: el('done') };
+  const cueEl = el('cue'), countEl = el('count'), leftEl = el('left');
+  let state = 'home', elapsed = 0, calm = 0, bSm = 0.5, t = 0, last = performance.now(), frameNo = 0;
+  let lastPhase = -1, lastCount = -1, lastLeft = '';
+  let spaceRing = { cx: 0, cy: 0, rs: 0.6 };
+  const ring = { cx: 0, cy: 0, rs: 0.6 };
+
+  function measure() {
+    const s = scr[state === 'done' ? 'done' : 'home'];
+    const sp = s.querySelector('.ringSpace'); if (!sp) return;
+    const r = sp.getBoundingClientRect(), size = Math.min(r.width, r.height);
+    spaceRing = { cx: r.left + r.width / 2, cy: r.top + r.height / 2, rs: clamp(size / (2.5 * baseR), 0.3, 1) };
+  }
+  function show(name, focusSel) {
+    for (const k in scr) { const on = k === name; scr[k].classList.toggle('on', on); scr[k].setAttribute('aria-hidden', on ? 'false' : 'true'); }
+    leftEl.classList.toggle('on', name === 'run');
+    measure();
+    if (focusSel) { const f = scr[name].querySelector(focusSel); if (f) setTimeout(() => f.focus({ preventScroll: true }), 350); }
+  }
+  function begin(wk) { if (typeof wk === 'string' && WEATHER[wk]) weather = wk; state = 'run'; elapsed = 0; lastPhase = -1; lastCount = -1; lastLeft = ''; show('run', '#stop'); }
+  function finish() { state = 'done'; show('done', '#again'); }
+  function toHome() { state = 'home'; show('home', '.weather'); }
+  document.querySelectorAll('.weather').forEach(b => b.addEventListener('click', () => begin(b.dataset.w)));
+  el('justgo').addEventListener('click', () => begin('stormy'));
+  el('again').addEventListener('click', () => begin());
+  el('other').addEventListener('click', toHome);
+  el('stop').addEventListener('click', toHome);
+
+  function phaseAt(tt) {
+    let acc = 0;
+    for (let i = 0; i < PHASES.length; i++) {
+      const ph = PHASES[i];
+      if (tt < acc + ph[1] || i === PHASES.length - 1) return { i, label: ph[0], left: ph[1] - (tt - acc), b: lerp(ph[2], ph[3], smooth(clamp((tt - acc) / ph[1]))) };
+      acc += ph[1];
+    }
+  }
+
+  const CALM = ['#86BC25', '#86EB22', '#d3efa4'];
+
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now; t += dt; frameNo++;
+    let bT = 0.5 + 0.45 * Math.sin(t * 0.63 - Math.PI / 2), goal = state === 'done' ? 1 : 0, tgt = spaceRing;
+
+    if (state === 'run') {
+      elapsed += dt;
+      if (elapsed >= TOTAL) finish();
+    }
+    if (state === 'run') {
+      goal = smooth(clamp(Math.pow(elapsed / TOTAL, 0.8)));
+      tgt = { cx: w / 2, cy: h / 2, rs: 1 };
+      const ph = phaseAt(elapsed % CYCLE); bT = ph.b;
+      if (ph.i !== lastPhase) { lastPhase = ph.i; cueEl.textContent = ph.label; }
+      const c = Math.max(1, Math.ceil(ph.left));
+      if (c !== lastCount) { lastCount = c; countEl.textContent = c; }
+      const lt = mmss(TOTAL - elapsed);
+      if (lt !== lastLeft) { lastLeft = lt; leftEl.textContent = lt + ' left'; }
+    } else if (frameNo % 40 === 0) measure();
+
+    calm += (goal - calm) * Math.min(1, dt * (state === 'run' ? 2.2 : 0.9));
+    bSm += (bT - bSm) * Math.min(1, dt * 7);
+    const rk = Math.min(1, dt * 4);
+    if (!ring.cx) { ring.cx = tgt.cx || w / 2; ring.cy = tgt.cy || h / 2; }
+    ring.cx += ((tgt.cx || w / 2) - ring.cx) * rk; ring.cy += ((tgt.cy || h / 2) - ring.cy) * rk; ring.rs += (tgt.rs - ring.rs) * rk;
+    const eb = smooth(clamp(bSm)), cx = ring.cx, cy = ring.cy, R = baseR * ring.rs * (0.6 + 0.4 * eb);
+
+    const bg = mix('#1b1a1d', '#0d190e', calm);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = 'rgba(' + bg[0] + ',' + bg[1] + ',' + bg[2] + ',' + (reduce ? 1 : 0.2) + ')';
+    ctx.fillRect(0, 0, w, h);
+    if (calm < 0.98) {
+      const c = ctx.createLinearGradient(0, 0, 0, h * 0.6);
+      c.addColorStop(0, 'rgba(10,10,14,' + (0.38 * (1 - calm)) + ')'); c.addColorStop(1, 'rgba(10,10,14,0)');
+      ctx.fillStyle = c; ctx.fillRect(0, 0, w, h);
+    }
+    if (calm > 0.01) {
+      const g = ctx.createRadialGradient(cx, cy, R * 0.2, cx, cy, R * 2.7);
+      g.addColorStop(0, 'rgba(134,188,37,' + (0.17 * calm * (0.55 + 0.45 * eb)) + ')'); g.addColorStop(1, 'rgba(134,188,37,0)');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    }
+
+    const W_ = WEATHER[weather], storm = 1 - calm, sp = reduce ? 0.35 : 1, k = 0.008 * Math.pow(calm, 1.4);
+    for (const p of P) {
+      const nx = Math.sin(p.y * .006 + t * .5 + p.s) + Math.cos(p.x * .009 - t * .35 + p.s * .7);
+      const ny = Math.cos(p.x * .007 + t * .45 - p.s) + Math.sin(p.y * .01 + t * .3 + p.s * 1.3);
+      p.vx += (nx * W_.amp + W_.wx) * storm * sp; p.vy += (ny * W_.amp + W_.wy) * storm * sp;
+      if (W_.jit) { p.vx += (Math.random() - 0.5) * W_.jit * storm * sp; p.vy += (Math.random() - 0.5) * W_.jit * storm * sp; }
+      if (ptr.on) {
+        const dx = p.x - ptr.x, dy = p.y - ptr.y, d2 = dx * dx + dy * dy;
+        if (d2 < 22000 && d2 > 1) { const d = Math.sqrt(d2), f = (1 - d / 148) * 0.9; p.vx += dx / d * f; p.vy += dy / d * f; }
+      }
+      const ang = p.a + t * p.sp * (0.25 + 0.75 * calm), rr = R * p.rf * (1 + 0.035 * Math.sin(t * 1.3 + p.s));
+      p.vx += (cx + Math.cos(ang) * rr - p.x) * k; p.vy += (cy + Math.sin(ang) * rr - p.y) * k;
+      p.vx *= W_.damp; p.vy *= W_.damp; p.x += p.vx; p.y += p.vy;
+      if (p.x < -20) p.x = w + 20; else if (p.x > w + 20) p.x = -20;
+      if (p.y < -20) p.y = h + 20; else if (p.y > h + 20) p.y = -20;
+    }
+    ctx.globalCompositeOperation = 'lighter';
+    const alpha = lerp(W_.a0, 0.72, calm), fx = W_.sx * (1 - calm) + calm, fy = W_.sy * (1 - calm) + calm;
+    for (let g = 0; g < 3; g++) {
+      const c = mix(W_.storm[g], CALM[g], calm);
+      ctx.fillStyle = 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + alpha + ')';
+      if (W_.round) {
+        ctx.beginPath();
+        for (const p of groups[g]) { const rad = p.z * fx / 2; ctx.moveTo(p.x + rad, p.y); ctx.arc(p.x, p.y, rad, 0, TAU); }
+        ctx.fill();
+      } else for (const p of groups[g]) ctx.fillRect(p.x, p.y, p.z * fx, p.z * fy);
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    if (calm > 0.05) {
+      ctx.beginPath(); ctx.arc(cx, cy, R * 0.74, 0, TAU);
+      ctx.strokeStyle = 'rgba(134,235,34,' + (0.28 * calm) + ')'; ctx.lineWidth = 1; ctx.stroke();
+    }
+    requestAnimationFrame(frame);
+  }
+
+  setup(); measure();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
